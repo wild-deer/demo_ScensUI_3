@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+termcolor
+pydantic
+python-multipart
