@@ -3,3 +3,15 @@ uvicorn
 termcolor
 pydantic
 python-multipart
+numpy
+rasterio
+geopandas
+matplotlib
+tqdm
+GDAL
+pyproj
+fastkml
+pygeoif
+pandas
+pyshp
+scipy

@@ -11,16 +11,30 @@ const router = createRouter({
       name: 'home',
       component: HomeView,
     },
-    
     {
-      path: '/structure-recognition',
-      name: 'StructureRecognition',
-      component: () => import('../views/StructureRecognition.vue'),
+      path: '/Bhwytj',
+      name: 'Bhwytj',
+      component: () => import('../views/Bhwytj.vue'),
     },
     {
-      path: '/icon-gallery',
-      name: 'IconGallery',
-      component: () => import('../views/IconGallery.vue'),
+      path: '/about',
+      name: 'about',
+      component: () => import('../views/AboutView.vue'),
+    },
+    {
+      path: '/Wyfwqd',
+      name: 'Wyfwqd',
+      component: () => import('../views/Wyfwqd.vue'),
+    },
+    {
+      path: '/Gdwytj',
+      name: 'Gdwytj',
+      component: () => import('../views/Gdwytj.vue'),
+    },
+    {
+      path: '/Pmwytj',
+      name: 'Pmwytj',
+      component: () => import('../views/Pmwytj.vue'),
     },
   ],
 })

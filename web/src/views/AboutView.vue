@@ -7,7 +7,7 @@
     <!-- 主内容区 -->
     <div class="flex flex-1">
       <!-- 左侧边栏 -->
-      <div class="w-1/6 flex items-center justify-center select-none"></div>
+      <div class="w-1/6 flex items-center justify-center"></div>
 
       <!-- 中间内容 -->
       <div class="flex-1 p-4">
@@ -43,8 +43,7 @@
                 </svg>
 
                 <button
-            
-                  @click="() => navigateToSourceRange('Wyfwqd')"
+                  @click="navigateToSourceRange"
                   class="flex-1 btn btn-lg btn-primary py-3 px-6 rounded-lg text-xl font-bold transition-all hover:scale-105"
                 >
                   物源范围圈定
@@ -69,7 +68,6 @@
                   ></path>
                 </svg>
                 <button
-                  @click="() => navigateToSourceRange('Bhwytj')"
                   class="flex-1 btn btn-lg btn-secondary py-3 px-6 rounded-lg text-xl font-bold transition-all hover:scale-105"
                 >
                   崩滑物源估算
@@ -94,7 +92,6 @@
                   ></path>
                 </svg>
                 <button
-                  @click="() => navigateToSourceRange('Gdwytj')"
                   class="flex-1 btn btn-lg py-3 px-6 rounded-lg text-xl font-bold transition-all hover:scale-105"
                 >
                   沟道物源估算
@@ -120,7 +117,6 @@
                   ></path>
                 </svg>
                 <button
-                  @click="() => navigateToSourceRange('Pmwytj')"
                   class="flex-1 btn btn-lg btn-warning py-3 px-6 rounded-lg text-xl font-bold transition-all hover:scale-105"
                 >
                   坡面物源估算
@@ -132,7 +128,7 @@
       </div>
 
       <!-- 右侧边栏 -->
-      <div class="w-1/6 flex items-center justify-center select-none"></div>
+      <div class="w-1/6 flex items-center justify-center"></div>
     </div>
   </div>
 </template>
@@ -150,7 +146,7 @@ const navigateToSourceRange = (param, event) => {
   console.log('事件对象:', event) // 原生 DOM 事件
   // 方式2：通过动态路由参数传递（需在路由配置中定义 path: '/source-range/:param'）
   router.push({
-    name: param,
+    name: 'home',
   })
 }
 </script>
