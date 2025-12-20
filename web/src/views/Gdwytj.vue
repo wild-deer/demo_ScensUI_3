@@ -139,6 +139,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { decode } from 'tiff'
 
 const router = useRouter()
 const activeTab = ref('surface')
@@ -166,16 +167,82 @@ const computeButtonText = computed(() => {
   return '开始计算'
 })
 
-const runComputeSurface = () => {
+const renderTiffToDataUrl = async (blob) => {
+  try {
+    const arrayBuffer = await blob.arrayBuffer()
+    const ifds = decode(arrayBuffer)
+    if (!ifds || ifds.length === 0) return ''
+    
+    const ifd = ifds[0]
+    const { width, height, data } = ifd
+    // Estimate channels
+    const totalPixels = width * height
+    const channels = data.length / totalPixels
+    
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    const imageData = ctx.createImageData(width, height)
+    const output = imageData.data
+    
+    if (channels === 1) {
+      // Single channel (Grayscale/DEM) - Normalize to 0-255
+      let min = Infinity, max = -Infinity
+      for (let i = 0; i < data.length; i++) {
+        if (data[i] < min) min = data[i]
+        if (data[i] > max) max = data[i]
+      }
+      const range = max - min || 1
+      
+      for (let i = 0; i < totalPixels; i++) {
+        const val = data[i]
+        const norm = Math.floor(((val - min) / range) * 255)
+        const pos = i * 4
+        output[pos] = norm     // R
+        output[pos + 1] = norm // G
+        output[pos + 2] = norm // B
+        output[pos + 3] = 255  // Alpha
+      }
+    } else if (channels >= 3) {
+      // RGB or RGBA
+      for (let i = 0; i < totalPixels; i++) {
+        const srcPos = i * channels
+        const destPos = i * 4
+        output[destPos] = data[srcPos]
+        output[destPos + 1] = data[srcPos + 1]
+        output[destPos + 2] = data[srcPos + 2]
+        output[destPos + 3] = channels > 3 ? data[srcPos + 3] : 255
+      }
+    }
+    
+    ctx.putImageData(imageData, 0, 0)
+    return canvas.toDataURL('image/png')
+  } catch (e) {
+    console.error('TIFF render error:', e)
+    return ''
+  }
+}
+
+const runComputeSurface = async () => {
   surfaceStatus.value = 'running'
-  setTimeout(() => {
-    const name = 'surface_result.tif'
-    const blob = new Blob(['DEM'], { type: 'application/octet-stream' })
-    const url = URL.createObjectURL(blob)
-    surfaceResult.value = { value: null, fileUrl: url, fileName: name }
+  // Mock delay
+  await new Promise(r => setTimeout(r, 1200))
+  
+  const name = 'surface_result.tif'
+  // Use input file if available to demonstrate TIFF rendering, otherwise mock blob
+  const blob = surfaceDemInput.value || new Blob(['DEM'], { type: 'application/octet-stream' })
+  const url = URL.createObjectURL(blob)
+  surfaceResult.value = { value: null, fileUrl: url, fileName: name }
+  
+  const tiffUrl = await renderTiffToDataUrl(blob)
+  if (tiffUrl) {
+    surfacePreviewUrl.value = tiffUrl
+  } else {
     surfacePreviewUrl.value = createPreview('surface', null)
-    surfaceStatus.value = 'done'
-  }, 1200)
+  }
+  
+  surfaceStatus.value = 'done'
 }
 
 const runComputeVolume = () => {

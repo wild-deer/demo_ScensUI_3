@@ -148,7 +148,8 @@ def save_slbl_to_tiff(slbl_surface, output_path, reference_dem_path):
     except Exception as e:
         print(f"Error saving SLBL file: {e}")
 
-def main(dem_path):
+# 修改为main1
+def main1(dem_path,max_iter=10000,output_slbl_path='calculated_slbl_with_correction.tif'):
     with rasterio.open(dem_path) as src:
         dem_data = src.read(1)  # 读取DEM的第一个波段
         
@@ -157,14 +158,16 @@ def main(dem_path):
         print(f"DEM 文件分辨率（单元格大小）：{delta_x} 米")
 
     z_max = 5  # 假设的滑坡最大平均深度
-    slbl_surface = compute_slbl_with_correction(dem_data, z_max, delta_x)
+    slbl_surface = compute_slbl_with_correction(dem_data, z_max, delta_x,max_iter = max_iter)
 
-    output_slbl_path = 'calculated_slbl_with_correction.tif'
+    # output_slbl_path = 'calculated_slbl_with_correction.tif'
     save_slbl_to_tiff(slbl_surface, output_slbl_path, dem_path)
 
 # 示例：替换为您自己的DEM文件路径
-dem_path = '222.tif'
-main(dem_path)
+if __name__ == "__main__":
+    dem_path = '222.tif'
+    # 修改为main1
+    main1(dem_path)
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -343,8 +346,8 @@ def plot_3d_cubes_with_surface(valid_mask, elevation_diff, output_data):
     # 显示图形
     plt.show()
 
-
-def main():
+# 修改为main2
+def main2():
     """
     主函数，进行影像重投影、计算体积差，并进行 3D 可视化。
     """
@@ -359,4 +362,4 @@ def main():
 
 # 如果是直接运行脚本，则执行 main 函数
 if __name__ == "__main__":
-    main()
+    main2()

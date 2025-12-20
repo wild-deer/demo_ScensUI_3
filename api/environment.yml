@@ -1,0 +1,30 @@
+name: demo_scensUI_3_api
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - fastapi
+  - uvicorn
+  - python-multipart
+  - aiofiles
+  - pydantic
+  - numpy
+  - pandas
+  - matplotlib
+  - scipy
+  - gdal
+  - rasterio
+  - pyproj
+  - fastkml
+  - pygeoif
+  - pyshp
+  - shapely
+  - fiona
+  - geopandas
+  - lxml
+  - tqdm
+  - termcolor
+  - openpyxl
+  - xlrd

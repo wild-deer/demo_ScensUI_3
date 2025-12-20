@@ -12,10 +12,10 @@ import pandas as pd
 from scipy import interpolate
 
 # 读取 Shapefile 文件
-sf = shapefile.Reader(r"F:\名人堂\许英杰项目\泥石流物源体积计算\九寨沟数据\剖面线2数据测试\边界shp\边界.shp")
+sf = shapefile.Reader(r"./input/沟道物源算法/边界shp/边界.shp")
 
 # 打开DEM文件并读取坐标信息
-with rasterio.open(r"F:\名人堂\许英杰项目\泥石流物源体积计算\九寨沟数据\剖面线2数据测试\c2020年核心区DEM5m_Clip1_Clip21.tif") as dem:
+with rasterio.open(r"./input/沟道物源算法/c2020年核心区DEM5m_Clip1_Clip21.tif") as dem:
     transform = dem.transform
     elevation = dem.read(1)
     nodata = dem.nodatavals[0]
@@ -27,12 +27,13 @@ transformer = Transformer.from_crs(wgs84, cgcs2000, always_xy=True)
 
 # 读取KML文件
 kml_file = kml.KML()
-with open(r"F:\名人堂\许英杰项目\泥石流物源体积计算\九寨沟数据\剖面线2数据测试\剖面线2.kml", 'rb') as f:
+with open(r"./input/沟道物源算法/剖面线2.kml", 'rb') as f:
     kml_file.from_string(f.read())
 
 # 提取并转换KML中所有折线段的坐标，分组存储
 line_groups = []
-features = list(kml_file.features())
+features = list(kml_file.features()) # 这里报错Traceback (most recent call last):, line 35, in <module> features = list(kml_file.features()) TypeError: 'list' object is not callable
+
 for feature in features:
     for placemark in feature.features():
         if isinstance(placemark.geometry, geometry.LineString):

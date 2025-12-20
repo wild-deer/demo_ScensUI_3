@@ -7,7 +7,7 @@ import tailwindcss from "@tailwindcss/vite";
 const ip = "192.168.2.10"
 // https://vite.dev/config/
 export default defineConfig({
-  base: process.env.NODE_ENV === 'production' ? '/ScensUI_3/' : '/',
+  base: process.env.NODE_ENV === 'production' ? '/demo_ScensUI_3/' : '/',
   plugins: [
     vue(),
     vueDevTools({

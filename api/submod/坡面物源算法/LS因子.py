@@ -43,7 +43,7 @@ def resample_dem_gdal(input_path, target_resolution, resampling_method='average'
         'cubic': gdal.GRA_Cubic
     }.get(resampling_method.lower(), gdal.GRA_Average)
     
-    # 执行重采样
+    # 执行重采样 in Warp return wrapper_GDALWarpDestName(destNameOrDestDS, srcDSTab, opts, callback, callback_data) File ", line 9374, in wrapper_GDALWarpDestName return _gdal.wrapper_GDALWarpDestName(*args) TypeError: in method 'wrapper_GDALWarpDestName', argument 4 of type 'GDALWarpAppOptions *'
     gdal.Warp(temp_file, ds_orig, 
               format='GTiff',
               width=new_x_size, 
@@ -378,7 +378,7 @@ def calculate_ls_factor(dem_file, output_file, cell_size=0.1, chunk_size=500,
 # 使用示例
 if __name__ == "__main__":
     # 输入DEM文件路径和输出文件路径
-    dem_path = r"F:\名人堂\许英杰项目\泥石流物源体积计算\泸定数据\晚期\泸定合并后DEM.tif"
+    dem_path = r"./input/坡面物源算法/LS因子/c2020年核心区DEM5m_Clip1_Clip21.tif"
     output_path = "LS因子.tif"
     
     # 确保输出目录存在

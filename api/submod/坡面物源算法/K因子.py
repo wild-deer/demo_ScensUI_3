@@ -355,13 +355,12 @@ def visualize_results(original_raster, clipped_raster, k_raster, shapefile_path)
 
 def main():
     # 设置文件路径
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    raster_path = os.path.join(current_dir, r"F:\名人堂\许英杰项目\泥石流物源体积计算\坡面物源侵蚀\土壤可侵蚀因子\hwsd.bil")
-    shapefile_path = os.path.join(current_dir, r"F:\名人堂\许英杰项目\泥石流物源体积计算\坡面物源侵蚀\降雨数据\边界轮廓\边界轮廓.shp")
-    attribute_xls_path = os.path.join(current_dir, r"F:\名人堂\许英杰项目\泥石流物源体积计算\坡面物源侵蚀\土壤可侵蚀因子\HWSD_DATA.xls")
-    clipped_path = os.path.join(current_dir, 'clipped_HWSD.tif')
-    attribute_tif_path = os.path.join(current_dir, 'clipped_HWSD_with_attributes.tif')
-    k_tif_path = os.path.join(current_dir, 'k因子.tif')
+    raster_path = "./input/坡面物源算法/K因子/hwsd.bil"
+    shapefile_path = "./input/坡面物源算法/K因子/边界轮廓/边界轮廓.shp"
+    attribute_xls_path = "./input/坡面物源算法/K因子/HWSD_DATA.xls"
+    clipped_path = 'clipped_HWSD.tif'
+    attribute_tif_path = 'clipped_HWSD_with_attributes.tif'
+    k_tif_path = 'k因子.tif'
     
     # 检查文件是否存在
     if not os.path.exists(raster_path):

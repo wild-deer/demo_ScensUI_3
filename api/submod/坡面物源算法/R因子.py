@@ -203,10 +203,10 @@ def calculate_rainfall_erosion_factor(folder_paths, shp_path, output_path, scale
 if __name__ == "__main__":
     # 设置路径
     folder_paths = [
-        r"F:\名人堂\许英杰项目\泥石流物源体积计算\坡面物源侵蚀\降雨数据\2023年降雨量数据",
-        r"F:\名人堂\许英杰项目\泥石流物源体积计算\坡面物源侵蚀\降雨数据\2024年降雨量数据"
+        r"./input/坡面物源算法/R因子/2023年降雨量数据",
+        r"./input/坡面物源算法/R因子/2024年降雨量数据"
     ]
-    shapefile_path = r"F:\名人堂\许英杰项目\泥石流物源体积计算\泸定数据\晚期\边界轮廓.shp"  # 裁剪用的shp文件
+    shapefile_path = r"./input/坡面物源算法/R因子/边界轮廓/边界轮廓.shp"  # 裁剪用的shp文件
     output_file = "R因子.tif"  # 输出文件路径
     
     # 执行计算 - 添加缩放因子参数

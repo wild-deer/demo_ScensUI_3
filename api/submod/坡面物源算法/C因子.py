@@ -213,8 +213,8 @@ def create_visualization(ndvi, f, C, output_dir):
 # 使用示例
 if __name__ == "__main__":
     # 请将这里的文件路径替换为您的实际文件路径
-    ndvi_file = r"F:\名人堂\许英杰项目\泥石流物源体积计算\坡面物源侵蚀\NDVI\NDVI_yearly_mean_2024.tif"
-    shp_file = r"F:\名人堂\许英杰项目\泥石流物源体积计算\坡面物源侵蚀\降雨数据\边界轮廓\边界轮廓.shp"  # 替换为您的Shp文件路径
+    ndvi_file = r"./input/坡面物源算法/c/NDVI_yearly_mean_2024.tif"
+    shp_file = r"./input/坡面物源算法/c/边界轮廓/边界轮廓.shp"  # 替换为您的Shp文件路径
     
     if os.path.exists(ndvi_file) and os.path.exists(shp_file):
         print("开始计算植被覆盖因子...")

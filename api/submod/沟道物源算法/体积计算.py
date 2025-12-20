@@ -7,10 +7,10 @@ from osgeo import gdal, gdalconst
 outputfilePath = 'ReprojectImage.tif'
 
 # 输入文件路径（待重投影的影像）
-inputfilePath = 'clipped_dem_square_pixel.tif'
+inputfilePath = './input/沟道物源算法/clipped_dem_square_pixel.tif'
 
 # 参考文件路径（用于重投影的目标影像）
-referencefilefilePath = r"F:\名人堂\许英杰项目\泥石流物源体积计算\九寨沟数据\剖面线2数据测试\c2020年核心区DEM5m_Clip1_Clip21.tif"
+referencefilefilePath = r"./input/沟道物源算法/c2020年核心区DEM5m_Clip1_Clip21.tif"
 
 def save_output_image(outputrasfile, outputfilePath):
     """
@@ -103,7 +103,7 @@ def compute_volume_difference():
     referencefile = gdal.Open(referencefilefilePath, gdal.GA_ReadOnly)
 
     # 获取输出影像和参考影像的波段
-    output_band = outputrasfile.GetRasterBand(1)
+    output_band = outputrasfile.GetRasterBand(1) #  in compute_volume_difference output_band = outputrasfile.GetRasterBand(1) AttributeError: 'NoneType' object has no attribute 'GetRasterBand'
     reference_band = referencefile.GetRasterBand(1)
 
     # 获取输出影像和参考影像的数组数据
@@ -115,7 +115,7 @@ def compute_volume_difference():
     area_per_pixel = pixel_size ** 2  # 像元的面积，单位：平方米
 
     # 计算高程差
-    elevation_diff = output_data - reference_data
+    elevation_diff = output_data - reference_data   # TODO 报错 lume_difference elevation_diff = output_data - reference_data ValueError: operands could not be broadcast together with shapes (93,76) (65,102)
 
     # 移除 NoData 值
     output_no_data = output_band.GetNoDataValue()
