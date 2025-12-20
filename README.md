@@ -1,6 +1,6 @@
 # 项目截图
 ![](assets/readme/file-20251220193015194.png)
-![](assets/README/file-20251220195117935.png)
+![](assets/readme/file-20251220195117935.png)
 # 部署说明
 
 ## 环境依赖
