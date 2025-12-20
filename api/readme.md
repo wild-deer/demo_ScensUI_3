@@ -1,6 +1,4 @@
 
-# 项目截图
-![](assets/readme/file-20251220193015194.png)
 
 # API 接口文档
 

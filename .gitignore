@@ -1,7 +1,6 @@
 # 文件上传目录
 uploads
 .obsidian/
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
