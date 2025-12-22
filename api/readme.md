@@ -98,6 +98,3 @@
 - 返回
   - `id`
   - `years_zip_url`：列表，上传年份 Zip 的链接
-  - `shp_zip_url`
-  - `r_tif_url`：`R因子.tif`
-  - `r_stats`：`{ min, max, mean }`

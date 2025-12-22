@@ -1,0 +1,34 @@
+# Python caches and compiled files
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Git
+.git
+.gitignore
+
+# IDE settings
+.idea
+.vscode
+*.swp
+demo_scens_api.tar
+# Logs
+*.log
+
+# Local outputs (these should be volume mapped, not baked into image)
+outputs/
+# Optional: if you don't want local input data baked in (uncomment if inputs are large)
+# input/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Virtual Environments (CRITICAL to ignore these)
+# Copying windows environment to linux container will bloat image and won't work anyway
+.conda
+.venv
+venv
+env
+ENV

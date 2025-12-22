@@ -6,7 +6,7 @@
 ## 环境依赖
 
 本项目使用 Conda 管理环境，请确保已安装 [Anaconda](https://www.anaconda.com/) 或 [Miniconda](https://docs.conda.io/en/latest/miniconda.html)。
-
+### windows部署
 1.  **创建环境**
 
     在 `api` 目录下运行以下命令创建 Conda 环境：
@@ -38,3 +38,17 @@
     服务启动后，API 将监听 `0.0.0.0:25376`。
 
     部署完毕后访问 `https://wild-deer.github.io/demo_ScensUI_3/`即可开始使用
+
+
+### docker部署
+使用 `docker load` 命令加载镜像：
+```bash
+# 语法: docker load -i <输入文件名.tar>
+docker load -i demo_scens_api.tar
+```
+
+然后执行
+
+```bash
+docker compose up
+```

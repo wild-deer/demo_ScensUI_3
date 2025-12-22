@@ -42,6 +42,9 @@ outputs_dir = base_dir / "outputs"
 outputs_dir.mkdir(exist_ok=True)
 app.mount("/files", StaticFiles(directory=str(outputs_dir)), name="files")
 
+@app.get("/test")
+def test_endpoint():
+    return {"message": "test接口正常工作"}
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=25376, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=25376, reload=True)
