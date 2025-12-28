@@ -3,11 +3,10 @@
     <header class="flex items-center px-5">
       <button
         @click="goHome"
-        class="mr-4  bg-gray-100 text-slate-900 hover:bg-gray-300 h-full grid place-items-center rounded-l-lg"
+        class="mr-4 bg-gray-100 text-slate-900 hover:bg-gray-300 h-full grid place-items-center rounded-l-lg"
         aria-label="返回主页"
       >
-      <div class="px-4 text-2xl">返回</div>
-        
+        <div class="px-4 text-2xl">返回</div>
       </button>
       <div class="flex-1 text-center bg-gray-100 text-black py-6 px-10 rounded-r-lg text-3xl font-bold tracking-wide select-none">
         沟道物源体积
@@ -17,124 +16,112 @@
     <!-- 主内容区：左右分栏 -->
     <div class="flex flex-1 p-4 gap-4">
       <!-- 左侧：控制与文件区 -->
-      <aside class="w-80 max-w-[28rem] flex-shrink-0 rounded-lg border border-gray-200 bg-gray-100 p-4 text-slate-900">
-        <!-- 子功能标签（水平排列） -->
+      <aside class="w-80 max-w-[28rem] flex-shrink-0 rounded-lg border border-gray-200 bg-gray-100 p-4 text-slate-900 overflow-y-auto">
         
-        <div class="flex gap-2 mb-4 pb-4">
-          <button
-            @click="activeTab = 'surface'"
-            :class="activeTab === 'surface' ? 'px-3 py-2 rounded-md bg-blue-600 text-white' : 'px-3 py-2 rounded-md bg-gray-200 text-slate-900 hover:bg-gray-300'"
-          >
-            底面构建
-          </button>
-          <button
-            @click="activeTab = 'volume'"
-            :class="activeTab === 'volume' ? 'px-3 py-2 rounded-md bg-blue-600 text-white' : 'px-3 py-2 rounded-md bg-gray-200 text-slate-900 hover:bg-gray-300'"
-          >
-            体积计算
-          </button>
-        </div>
-<div class="mb-3 text-lg font-bold text-slate-700 pb-4">输入文件:</div>
-        <!-- 地面构建 -->
-        <div v-if="activeTab === 'surface'" class="space-y-4">
+        <div class="mb-3 text-lg font-bold text-slate-700 pb-4">输入文件:</div>
+        <div class="space-y-4">
           <div>
-            <label class="block text-sm mb-2 text-slate-700">Shapefile（可多选 .shp/.shx/.dbf/.prj）</label>
+            <label class="block text-sm mb-2 text-slate-700">原始 DEM 压缩包 (.zip)</label>
+            <div class="text-xs text-slate-500 mb-1">压缩包内必须包含 .tif 格式的 DEM 文件</div>
             <input
               type="file"
-              multiple
-              accept=".shp,.shx,.dbf,.prj"
+              accept=".zip"
               class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700"
-              @change="onSurfaceShpChange"
+              @change="onDemZipChange"
             />
           </div>
           <div>
-            <label class="block text-sm mb-2 text-slate-700">KML</label>
+            <label class="block text-sm mb-2 text-slate-700">边界范围 KML (.kml)</label>
             <input
               type="file"
               accept=".kml"
               class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700"
-              @change="onSurfaceKmlChange"
+              @change="onBoundaryKmlChange"
             />
           </div>
           <div>
-            <label class="block text-sm mb-2 text-slate-700">DEM（输入）</label>
+            <label class="block text-sm mb-2 text-slate-700">剖面线 KML (.kml)</label>
             <input
               type="file"
-              accept=".tif,.dem,.asc"
+              accept=".kml"
               class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700"
-              @change="onSurfaceDemChange"
+              @change="onProfileKmlChange"
             />
           </div>
         </div>
 
-        <!-- 体积计算 -->
-        <div v-else class="space-y-4">
-          <div>
-            <label class="block text-sm mb-2 text-slate-700">DEM1</label>
-            <input
-              type="file"
-              accept=".tif,.dem,.asc"
-              class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700"
-              @change="onVolumeDem1Change"
-            />
-          </div>
-          <div>
-            <label class="block text-sm mb-2 text-slate-700">DEM2</label>
-            <input
-              type="file"
-              accept=".tif,.dem,.asc"
-              class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700"
-              @change="onVolumeDem2Change"
-            />
-          </div>
+        <div v-if="errorMessage" class="mt-4 p-3 bg-red-100 text-red-700 rounded-md text-sm">
+          {{ errorMessage }}
         </div>
 
-        <div class="mt-6 pt-10">
-          <div class="mb-3 text-lg font-bold text-slate-700 py-4">输出文件:</div>
-          <div v-if="currentStatus === 'done'" class="mt-4 space-y-2">
-            <div v-if="activeTab === 'volume'">
-              <div>体积结果：<span class="font-mono">{{ volumeResult.value }}</span></div>
-              <a
-                v-if="volumeResult.fileUrl"
-                :href="volumeResult.fileUrl"
-                :download="volumeResult.fileName"
-                class="inline-block px-3 py-2 rounded-md bg-green-600 text-white hover:bg-green-700"
-              >
-                下载结果文件
-              </a>
-            </div>
-            <div v-else>
-              <div>已生成 DEM 文件</div>
-              <a
-                v-if="surfaceResult.fileUrl"
-                :href="surfaceResult.fileUrl"
-                :download="surfaceResult.fileName"
-                class="inline-block px-3 py-2 rounded-md bg-green-600 text-white hover:bg-green-700"
-              >
-                下载 DEM
-              </a>
-            </div>
-          </div>
-        </div>
-        <div class="pt-10">
+        <div class="mt-6 pt-4">
           <button
-            class="w-full py-2 rounded-md transition"
-            :class="currentStatus === 'running' ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-[.99]'"
-            :disabled="currentStatus === 'running'"
+            class="w-full py-2 rounded-md transition font-bold"
+            :class="status === 'running' ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-[.99]'"
+            :disabled="status === 'running'"
             @click="onActionClick"
           >
             {{ computeButtonText }}
           </button>
         </div>
+
+        <div class="mt-6 border-t pt-4" v-if="result">
+          <div class="mb-3 text-lg font-bold text-slate-700">计算结果:</div>
+          
+          <div class="mb-4 p-3 bg-white rounded shadow-sm">
+            <div class="text-sm text-gray-500">体积 (Volume)</div>
+            <div class="text-xl font-mono font-bold text-blue-600">{{ result.volume }} m³</div>
+          </div>
+
+          <div class="space-y-2 text-sm">
+            <div class="font-semibold text-slate-700">文件下载:</div>
+            
+            <a v-if="result.files?.generated_dem" :href="result.files.generated_dem" download class="block p-2 bg-white border rounded hover:bg-gray-50 text-blue-600 truncate">
+              <i class="fas fa-download mr-2"></i>生成 DEM (.tif)
+            </a>
+            <a v-if="result.files?.final_clipped_dem" :href="result.files.final_clipped_dem" download class="block p-2 bg-white border rounded hover:bg-gray-50 text-blue-600 truncate">
+              <i class="fas fa-download mr-2"></i>裁剪后 DEM (.tif)
+            </a>
+            <a v-if="result.files?.merged_csv" :href="result.files.merged_csv" download class="block p-2 bg-white border rounded hover:bg-gray-50 text-blue-600 truncate">
+              <i class="fas fa-download mr-2"></i>拟合点坐标 (.csv)
+            </a>
+            <a v-if="result.files?.boundary_csv" :href="result.files.boundary_csv" download class="block p-2 bg-white border rounded hover:bg-gray-50 text-blue-600 truncate">
+              <i class="fas fa-download mr-2"></i>边界点坐标 (.csv)
+            </a>
+             <a v-if="result.files?.bspline_csv" :href="result.files.bspline_csv" download class="block p-2 bg-white border rounded hover:bg-gray-50 text-blue-600 truncate">
+              <i class="fas fa-download mr-2"></i>B样条点坐标 (.csv)
+            </a>
+             <a v-if="result.files?.x123_csv" :href="result.files.x123_csv" download class="block p-2 bg-white border rounded hover:bg-gray-50 text-blue-600 truncate">
+              <i class="fas fa-download mr-2"></i>每组 X1_X2_X3 (.csv)
+            </a>
+          </div>
+        </div>
       </aside>
 
       <!-- 右侧：画面展示（主要区域） -->
-      <main class="flex-1 rounded-lg border border-gray-200 bg-gray-100 overflow-hidden grid place-items-center">
-        <img v-if="currentPreviewUrl" :src="currentPreviewUrl" class="max-w-full max-h-full object-contain" />
+      <main class="flex-1 rounded-lg border border-gray-200 bg-gray-100 overflow-hidden grid place-items-center relative">
+        <img v-if="previewUrl" :src="previewUrl" :style="{ height: previewHeight + 'px' }" class="object-contain max-w-full transition-all duration-200" />
+        <div v-else class="flex-1 flex items-center justify-center text-gray-400">
+           <div class="text-center">
+             <div class="text-4xl mb-2">📊</div>
+             <div>结果预览区域</div>
+           </div>
+        </div>
+        
+        <!-- 如果有多个可视化结果，可以添加切换按钮 -->
+        <div v-if="result && result.visualization_urls && result.visualization_urls.length > 1" class="absolute bottom-4 left-0 right-0 flex justify-center gap-2">
+            <button 
+                v-for="(url, index) in result.visualization_urls" 
+                :key="index"
+                @click="previewUrl = normalizeUrl(url)"
+                class="w-3 h-3 rounded-full"
+                :class="previewUrl === normalizeUrl(url) ? 'bg-blue-600' : 'bg-gray-400 hover:bg-gray-500'"
+            ></button>
+        </div>
       </main>
     </div>
   </div>
-  </template>
+</template>
 
 <script setup>
 import { ref, computed } from 'vue'
@@ -142,28 +129,30 @@ import { useRouter } from 'vue-router'
 import { decode } from 'tiff'
 
 const router = useRouter()
-const activeTab = ref('surface')
+const API_URL = import.meta.env.VITE_API_URL || ''
+const BASE_URL = API_URL.endsWith('/') ? API_URL : `${API_URL}/`
 
-// 地面构建
-const surfaceShpFiles = ref(null)
-const surfaceKmlFile = ref(null)
-const surfaceDemInput = ref(null)
+// State
+const demZipFile = ref(null)
+const boundaryKmlFile = ref(null)
+const profileKmlFile = ref(null)
+const status = ref('idle') // idle, running, done
+const errorMessage = ref('')
+const result = ref(null)
+const previewUrl = ref('')
+const previewHeight = ref(500)
 
-// 体积计算
-const volumeDem1File = ref(null)
-const volumeDem2File = ref(null)
-
-const surfaceStatus = ref('idle')
-const surfaceResult = ref({ value: null, fileUrl: '', fileName: 'surface_result.tif' })
-const surfacePreviewUrl = ref('')
-
-const volumeStatus = ref('idle')
-const volumeResult = ref({ value: null, fileUrl: '', fileName: 'volume_result.json' })
-const volumePreviewUrl = ref('')
+// Helpers
+const normalizeUrl = (u) => {
+  if (!u) return ''
+  if (/^https?:\/\//i.test(u)) return u
+  if (u.startsWith('/')) return BASE_URL + u.slice(1)
+  return BASE_URL + u
+}
 
 const computeButtonText = computed(() => {
-  if (currentStatus.value === 'running') return '正在计算'
-  if (currentStatus.value === 'done') return '重新计算'
+  if (status.value === 'running') return '正在计算...'
+  if (status.value === 'done') return '重新计算'
   return '开始计算'
 })
 
@@ -224,130 +213,110 @@ const renderTiffToDataUrl = async (blob) => {
   }
 }
 
-const runComputeSurface = async () => {
-  surfaceStatus.value = 'running'
-  // Mock delay
-  await new Promise(r => setTimeout(r, 1200))
-  
-  const name = 'surface_result.tif'
-  // Use input file if available to demonstrate TIFF rendering, otherwise mock blob
-  const blob = surfaceDemInput.value || new Blob(['DEM'], { type: 'application/octet-stream' })
-  const url = URL.createObjectURL(blob)
-  surfaceResult.value = { value: null, fileUrl: url, fileName: name }
-  
-  const tiffUrl = await renderTiffToDataUrl(blob)
-  if (tiffUrl) {
-    surfacePreviewUrl.value = tiffUrl
-  } else {
-    surfacePreviewUrl.value = createPreview('surface', null)
-  }
-  
-  surfaceStatus.value = 'done'
+// File Handlers
+const onDemZipChange = (e) => {
+  demZipFile.value = e.target.files?.[0] ?? null
 }
-
-const runComputeVolume = () => {
-  volumeStatus.value = 'running'
-  setTimeout(() => {
-    const volume = Math.round(Math.random() * 100000) / 10
-    const name = 'volume_result.json'
-    const blob = new Blob([JSON.stringify({ volume })], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    volumeResult.value = { value: volume, fileUrl: url, fileName: name }
-    volumePreviewUrl.value = createPreview('volume', volume)
-    volumeStatus.value = 'done'
-  }, 1200)
+const onBoundaryKmlChange = (e) => {
+  boundaryKmlFile.value = e.target.files?.[0] ?? null
 }
-
-const resetForm = () => {
-  if (activeTab.value === 'surface') {
-    surfaceShpFiles.value = null
-    surfaceKmlFile.value = null
-    surfaceDemInput.value = null
-    surfaceStatus.value = 'idle'
-    surfaceResult.value = { value: null, fileUrl: '', fileName: 'surface_result.tif' }
-    surfacePreviewUrl.value = ''
-  } else {
-    volumeDem1File.value = null
-    volumeDem2File.value = null
-    volumeStatus.value = 'idle'
-    volumeResult.value = { value: null, fileUrl: '', fileName: 'volume_result.json' }
-    volumePreviewUrl.value = ''
-  }
+const onProfileKmlChange = (e) => {
+  profileKmlFile.value = e.target.files?.[0] ?? null
 }
 
 const goHome = () => {
   router.push({ name: 'home' })
 }
 
-// 文件选择处理
-const onSurfaceShpChange = (e) => {
-  surfaceShpFiles.value = e.target.files
-}
-const onSurfaceKmlChange = (e) => {
-  surfaceKmlFile.value = e.target.files?.[0] ?? null
-}
-const onSurfaceDemChange = (e) => {
-  surfaceDemInput.value = e.target.files?.[0] ?? null
-}
-const onVolumeDem1Change = (e) => {
-  volumeDem1File.value = e.target.files?.[0] ?? null
-}
-const onVolumeDem2Change = (e) => {
-  volumeDem2File.value = e.target.files?.[0] ?? null
-}
+const onActionClick = async () => {
+  if (status.value === 'running') return
 
-const onActionClick = () => {
-  if (activeTab.value === 'surface') {
-    if (surfaceStatus.value === 'idle') {
-      runComputeSurface()
-    } else if (surfaceStatus.value === 'done') {
-      surfaceStatus.value = 'idle'
-      surfaceResult.value = { value: null, fileUrl: '', fileName: 'surface_result.tif' }
-      surfacePreviewUrl.value = ''
-      runComputeSurface()
-    }
-  } else {
-    if (volumeStatus.value === 'idle') {
-      runComputeVolume()
-    } else if (volumeStatus.value === 'done') {
-      volumeStatus.value = 'idle'
-      volumeResult.value = { value: null, fileUrl: '', fileName: 'volume_result.json' }
-      volumePreviewUrl.value = ''
-      runComputeVolume()
-    }
+  // Validation
+  if (!demZipFile.value) {
+    errorMessage.value = '请上传原始 DEM 压缩包 (.zip)'
+    return
   }
-}
+  if (!boundaryKmlFile.value) {
+    errorMessage.value = '请上传边界范围 KML (.kml)'
+    return
+  }
+  if (!profileKmlFile.value) {
+    errorMessage.value = '请上传剖面线 KML (.kml)'
+    return
+  }
 
-const currentStatus = computed(() =>
-  activeTab.value === 'surface' ? surfaceStatus.value : volumeStatus.value
-)
-const currentPreviewUrl = computed(() =>
-  activeTab.value === 'surface' ? surfacePreviewUrl.value : volumePreviewUrl.value
-)
-const createPreview = (type, value) => {
-  const c = document.createElement('canvas')
-  c.width = 640
-  c.height = 360
-  const ctx = c.getContext('2d')
-  const grad = ctx.createLinearGradient(0, 0, c.width, c.height)
-  if (type === 'surface') {
-    grad.addColorStop(0, '#1e3a8a')
-    grad.addColorStop(1, '#93c5fd')
-    ctx.fillStyle = grad
-    ctx.fillRect(0, 0, c.width, c.height)
-  } else {
-    grad.addColorStop(0, '#065f46')
-    grad.addColorStop(1, '#34d399')
-    ctx.fillStyle = grad
-    ctx.fillRect(0, 0, c.width, c.height)
-    const barW = 60
-    const barH = Math.min(300, Math.max(20, (value || 0) / 500))
-    ctx.fillStyle = '#064e3b'
-    ctx.fillRect(c.width / 2 - barW / 2, c.height - barH - 20, barW, barH)
+  errorMessage.value = ''
+  status.value = 'running'
+  result.value = null
+  previewUrl.value = ''
+
+  try {
+    const formData = new FormData()
+    formData.append('dem_zip', demZipFile.value)
+    formData.append('boundary_kml', boundaryKmlFile.value)
+    formData.append('profile_kml', profileKmlFile.value)
+
+    const response = await fetch(`${BASE_URL}channel-source`, {
+      method: 'POST',
+      body: formData
+    })
+
+    if (!response.ok) {
+        let errText = response.statusText;
+        try {
+            const errJson = await response.json();
+            if(errJson.detail) errText = errJson.detail;
+        } catch(e) {}
+        throw new Error(`请求失败 (${response.status}): ${errText}`)
+    }
+
+    const data = await response.json()
+    
+    // Normalize URLs in the result
+    const processedFiles = {}
+    if (data.files) {
+        for (const [key, url] of Object.entries(data.files)) {
+            processedFiles[key] = normalizeUrl(url)
+        }
+    }
+    
+    const processedVisUrls = (data.visualization_urls || []).map(normalizeUrl)
+
+    result.value = {
+        ...data,
+        files: processedFiles,
+        visualization_urls: processedVisUrls
+    }
+
+    // Determine what to preview
+    if (processedVisUrls.length > 0) {
+        previewUrl.value = processedVisUrls[0]
+    } else if (processedFiles.generated_dem) {
+        // Try to fetch and render the generated DEM TIFF
+        try {
+            const tiffResp = await fetch(processedFiles.generated_dem)
+            if (tiffResp.ok) {
+                const blob = await tiffResp.blob()
+                const dataUrl = await renderTiffToDataUrl(blob)
+                if (dataUrl) {
+                    previewUrl.value = dataUrl
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to render DEM preview:', e)
+        }
+    }
+
+    status.value = 'done'
+  } catch (error) {
+    console.error('Computation failed:', error)
+    errorMessage.value = '计算出错: ' + error.message
+    status.value = 'idle'
   }
-  return c.toDataURL('image/png')
 }
 </script>
 
 <style scoped>
+/* 引入 Font Awesome (如果全局没有引入，可以在这里加，或者假设已全局引入) */
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css');
 </style>

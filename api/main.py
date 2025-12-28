@@ -4,9 +4,10 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import routers.wyfwqd
+
 import routers.崩滑物源算法_接口
 import routers.坡面物源算法_接口
+import routers.沟道物源算法_接口
 
 
 
@@ -36,6 +37,7 @@ app.add_middleware(
 
 app.include_router(routers.崩滑物源算法_接口.router)
 app.include_router(routers.坡面物源算法_接口.router)
+app.include_router(routers.沟道物源算法_接口.router)
 
 base_dir = Path(__file__).parent
 outputs_dir = base_dir / "outputs"
