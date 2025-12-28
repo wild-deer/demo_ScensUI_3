@@ -7,7 +7,8 @@ import uuid
 import shutil
 import zipfile
 import re
-import subprocess
+import importlib
+import importlib.util
 
 router = APIRouter()
 
@@ -19,8 +20,25 @@ base_dir = Path(root_dir)
 outputs_dir = base_dir / "outputs"
 outputs_dir.mkdir(exist_ok=True)
 
-# 指向原始脚本路径
-ORIGINAL_SCRIPT_PATH = base_dir / "submod" / "沟道物源（完美）.py"
+# 导入封装后的算法模块
+# 注意：模块名包含中文括号，建议使用 importlib 动态导入
+SUBMOD_DIR = base_dir / "submod"
+sys.path.append(str(SUBMOD_DIR))
+
+# 尝试导入模块
+try:
+    # 模块名为 "沟道物源（完美）"
+    algo_module_name = "沟道物源（完美）"
+    if algo_module_name not in sys.modules:
+        algo_spec = importlib.util.spec_from_file_location(algo_module_name, SUBMOD_DIR / f"{algo_module_name}.py")
+        algo_module = importlib.util.module_from_spec(algo_spec)
+        sys.modules[algo_module_name] = algo_module
+        algo_spec.loader.exec_module(algo_module)
+    else:
+        algo_module = sys.modules[algo_module_name]
+except Exception as e:
+    print(f"Failed to import algorithm module: {e}")
+    algo_module = None
 
 @router.post("/channel-source")
 async def channel_source_algorithm(
@@ -31,13 +49,13 @@ async def channel_source_algorithm(
 ):
     """
     功能
-    - 沟道物源算法：直接调用后端脚本 `submod/沟道物源（完美）.py` 进行计算。
+    - 沟道物源算法：调用后端脚本 `submod/沟道物源（完美）.py` 的 `run_algorithm` 函数。
     - 接口路径：`POST /channel-source`
     - 请求类型：`multipart/form-data`
-    
-    原理
-    - 动态替换脚本中的硬编码输入路径，并在隔离环境中执行，不修改原脚本文件。
     """
+    if not algo_module:
+        return {"error": "Algorithm module not loaded"}
+
     uid = uuid.uuid4().hex
     task_dir = outputs_dir / f"{uid}_channel_source"
     task_dir.mkdir(exist_ok=True)
@@ -101,121 +119,83 @@ async def channel_source_algorithm(
         profile_kml.file.seek(0)
         shutil.copyfileobj(profile_kml.file, f)
 
-    # 2. 读取原始脚本并动态替换
+    # 2. 调用算法
+    # 注入/Mock plt.show 以避免阻塞并保存图片
+    # 注意：由于我们是在同一个进程中运行，直接修改 algo_module.plt.show 是危险的，因为它会影响全局
+    # 但考虑到这是一个 Demo/单任务场景，或者我们可以用 matplotlib 的非交互后端
+    import matplotlib
+    matplotlib.use('Agg') # 使用非交互式后端
+    import matplotlib.pyplot as plt
+    
+    # 定义一个保存图片的函数
+    def save_figure_hook(*args, **kwargs):
+        # 保存当前 figure
+        try:
+            filename = f"figure_{uuid.uuid4().hex[:6]}.png"
+            plt.savefig(task_dir / filename)
+            plt.close()
+        except Exception as e:
+            print(f"Error saving figure: {e}")
+
+    # 临时替换 plt.show
+    original_show = plt.show
+    plt.show = save_figure_hook
+
+    # 捕获 stdout/stderr
+    from io import StringIO
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    sys.stdout = my_stdout = StringIO()
+    sys.stderr = my_stderr = StringIO()
+
     try:
-        with open(ORIGINAL_SCRIPT_PATH, "r", encoding="utf-8") as f:
-            script_content = f.read()
-    except Exception as e:
-        return {"error": f"Failed to read original script: {e}"}
-
-    # 替换规则：
-    # 原始DEM = r"..." -> 原始DEM = r"{dem_path}"
-    # 剖面线kml = r"..." -> 剖面线kml = r"{profile_kml_path}"
-    # 边界kml_path = r"..." -> 边界kml_path = r"{boundary_kml_path}"
-    
-    # 使用正则替换，确保路径转义安全
-    # Python 路径在 Windows 上是反斜杠，但在字符串里最好用正斜杠或双反斜杠
-    safe_dem_path = str(dem_path).replace("\\", "/")
-    safe_profile_path = str(profile_kml_path).replace("\\", "/")
-    safe_boundary_path = str(boundary_kml_path).replace("\\", "/")
-
-    script_content = re.sub(
-        r'原始DEM\s*=\s*r?".*?"', 
-        f'原始DEM = r"{safe_dem_path}"', 
-        script_content, 
-        count=1
-    )
-    script_content = re.sub(
-        r'剖面线kml\s*=\s*r?".*?"', 
-        f'剖面线kml = r"{safe_profile_path}"', 
-        script_content, 
-        count=1
-    )
-    script_content = re.sub(
-        r'边界kml_path\s*=\s*r?".*?"', 
-        f'边界kml_path = r"{safe_boundary_path}"', 
-        script_content, 
-        count=1
-    )
-
-    # 禁用 plt.show() 以免阻塞
-    # 替换为 plt.savefig('visualization_result.png') 或直接 pass
-    # 注意：原脚本有多处 plt.show()，我们根据上下文来处理
-    # 比如最后的 3D 可视化，我们希望保存下来
-    
-    # 简单粗暴：把 plt.show() 替换为 pass，但这样就没图了。
-    # 更好的方法：在脚本开头加一行：plt.show = lambda: plt.savefig(f"figure_{uuid.uuid4().hex[:4]}.png")
-    # 但原脚本导入了 matplotlib.pyplot as plt，所以我们需要在 import 之后注入
-    
-    injection_code = """
-import matplotlib.pyplot as plt
-def save_and_close():
-    import uuid
-    plt.savefig(f"figure_{uuid.uuid4().hex[:4]}.png")
-    plt.close()
-plt.show = save_and_close
-"""
-    # 插入到 import 块之后
-    # 找到最后一个 import
-    last_import_idx = 0
-    lines = script_content.splitlines()
-    for i, line in enumerate(lines):
-        if line.startswith("import ") or line.startswith("from "):
-            last_import_idx = i
-    
-    lines.insert(last_import_idx + 1, injection_code)
-    modified_script_content = "\n".join(lines)
-
-    # 3. 写入临时执行脚本
-    temp_script_path = task_dir / "runner.py"
-    with open(temp_script_path, "w", encoding="utf-8") as f:
-        f.write(modified_script_content)
-
-    # 4. 执行脚本
-    # 注意：必须在 task_dir 下执行，这样生成的相对路径文件才会出现在 task_dir 里
-    try:
-        # 使用当前 python 环境执行
-        env = os.environ.copy()
-        # 确保 PYTHONPATH 包含项目根目录，以便能找到 submod 等（虽然这里是单脚本执行，可能不需要）
-        env["PYTHONPATH"] = str(root_dir)
+        # 调用封装的函数
+        # 注意：run_algorithm 会切换 CWD 到 task_dir，这是线程不安全的
+        # 如果是多线程环境，这会有问题。但在 FastAPI 的 async def 中（通常运行在主线程或线程池），
+        # os.chdir 会影响整个进程。这是一个潜在风险点。
+        # 更好的做法是修改 run_algorithm 不依赖 os.chdir，而是传递 output_dir。
+        # 但目前为了最小化修改，我们加个锁或者只能这样。
         
-        # 增加超时机制，防止死循环
-        process = subprocess.run(
-            [sys.executable, str(temp_script_path)],
-            cwd=str(task_dir),
-            capture_output=True,
-            text=True,
-            env=env,
-            timeout=300 # 5分钟超时
+        # 传入绝对路径
+        algo_module.run_algorithm(
+            dem_path=str(dem_path.absolute()),
+            boundary_kml=str(boundary_kml_path.absolute()),
+            profile_kml=str(profile_kml_path.absolute()),
+            work_dir=str(task_dir.absolute())
         )
         
-        if process.returncode != 0:
-            return {
-                "error": "Script execution failed",
-                "stderr": process.stderr,
-                "stdout": process.stdout
-            }
-            
-    except subprocess.TimeoutExpired:
-        return {"error": "Script execution timed out"}
     except Exception as e:
-        return {"error": f"Execution error: {str(e)}"}
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+        return {
+            "error": "Algorithm execution failed",
+            "message": str(e),
+            "logs": {
+                "stdout": my_stdout.getvalue(),
+                "stderr": my_stderr.getvalue() + f"\nException: {traceback.format_exc()}"
+            }
+        }
+    finally:
+        # 恢复环境
+        plt.show = original_show
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+        # 切回原来的目录 (虽然 run_algorithm 内部已经切回去了，但为了保险)
+        os.chdir(current_dir)
 
-    # 5. 收集结果
-    # 原脚本生成的文件名通常是固定的
+    # 3. 收集结果
     expected_files = {
         "x123_csv": "每组X1_X2_X3坐标点.csv",
         "bspline_csv": "B样条点坐标.csv",
         "boundary_csv": "DEM边界点坐标.csv",
         "merged_csv": "拟合点坐标.csv",
         "generated_dem": "output_dem.tif",
-        "final_clipped_dem": "final_clip_test.tif", # 原脚本里 output_path = "final_clip_test.tif"
+        "final_clipped_dem": "final_clip_test.tif",
     }
 
     result_urls = {}
     base_url = str(request.base_url).rstrip("/")
     
-    # 辅助函数生成 URL
     def get_url(filename):
         fpath = task_dir / filename
         if fpath.exists():
@@ -229,17 +209,14 @@ plt.show = save_and_close
             result_urls[key] = url
 
     # 查找生成的图片
-    # 因为我们替换了 plt.show，图片名是随机的 figure_xxxx.png
-    # 或者原脚本可能有显式保存的图片？原脚本没有 savefig，只有 show
-    # 但我们注入的代码会保存为 figure_xxxx.png
     images = list(task_dir.glob("figure_*.png"))
     image_urls = [get_url(img.name) for img in images]
     
-    # 尝试解析 stdout 获取体积值
-    # 原脚本输出：修正后体积计算结果: 12345.67 立方米
+    # 解析体积结果 (从 stdout)
+    stdout_content = my_stdout.getvalue()
     volume = None
-    if process.stdout:
-        match = re.search(r"修正后体积计算结果:\s*([-\d.]+)\s*立方米", process.stdout)
+    if stdout_content:
+        match = re.search(r"修正后体积计算结果:\s*([-\d.]+)\s*立方米", stdout_content)
         if match:
             volume = float(match.group(1))
 
@@ -249,7 +226,7 @@ plt.show = save_and_close
         "visualization_urls": image_urls,
         "files": result_urls,
         "logs": {
-            "stdout": process.stdout[:2000] if process.stdout else "", # 截断日志防止过大
-            "stderr": process.stderr[:2000] if process.stderr else ""
+            "stdout": stdout_content[:5000],
+            "stderr": my_stderr.getvalue()[:5000]
         }
     }

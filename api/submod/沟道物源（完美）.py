@@ -15,107 +15,370 @@ import os
 import shapefile
 import pandas as pd
 from scipy import interpolate
+from rasterio.mask import mask
+from rasterio.transform import from_origin
+from rasterio.crs import CRS
+from osgeo import gdal, gdalconst
+import traceback
+
 plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
 plt.rcParams['axes.unicode_minus'] = False    # 用来正常显示负号
-# 定义坐标系和创建转换器
-wgs84 = "EPSG:4326"  # WGS84
-cgcs2000 = "EPSG:4544"  # CGCS2000
-transformer = Transformer.from_crs(wgs84, cgcs2000, always_xy=True)
 
-# 打开DEM文件并读取坐标信息
+# 全局变量定义（默认值，会被 run_algorithm 覆盖）
 原始DEM = r"C:\Users\jerem\Desktop\Project\jd\课题页面\demo_scensUI_3\api\input\沟道物源\c2020年核心区DEM5m_Clip1.tif"
-
-# 读取kml文件
 剖面线kml = r"C:\Users\jerem\Desktop\Project\jd\课题页面\demo_scensUI_3\api\input\沟道物源\SL194827.kml"
 边界kml_path = r"C:\Users\jerem\Desktop\Project\jd\课题页面\demo_scensUI_3\api\input\沟道物源\GD02.kml"
 
-# 读取 KML 并处理
-try:
-    # 2. 使用 fastkml 读取
-    k = kml.KML()
-    with open(边界kml_path, 'rb') as f:
-        k.from_string(f.read())
+# 全局变量用于存储中间结果路径
+面shp = None
+output_dem = 'output_dem.tif'
+outtif_裁剪 = None
+outputfilePath = 'Aligned_Reference_DEM.tif'
+input_aligned_path = 'Aligned_Input_Resampled.tif'
 
-    # 3. 递归提取几何体并转换为 Shapely 对象
-    def extract_geometries(features):
-        geoms = []
-        for feature in features:
-            # A. 如果是文件夹，递归提取
-            if isinstance(feature, (kml.Folder, kml.Document)):
-                geoms.extend(extract_geometries(feature.features()))
-            
-            # B. 如果是具体的要素 (Placemark)
-            elif hasattr(feature, 'geometry') and feature.geometry is not None:
-                geom = feature.geometry
-                coords = []
+def run_algorithm(dem_path=None, boundary_kml=None, profile_kml=None, work_dir=None):
+    """
+    封装后的主入口函数
+    :param dem_path: 原始DEM路径
+    :param boundary_kml: 边界KML路径
+    :param profile_kml: 剖面线KML路径
+    :param work_dir: 工作目录（可选，若提供则切换到该目录执行）
+    """
+    global 原始DEM, 剖面线kml, 边界kml_path, 面shp, output_dem, outtif_裁剪, outputfilePath, input_aligned_path
+    
+    # 切换工作目录
+    original_cwd = os.getcwd()
+    if work_dir:
+        os.chdir(work_dir)
+        print(f"Working directory changed to: {work_dir}")
 
-                # --- 核心修复：根据几何类型获取坐标 ---
-                try:
-                    # 情况 1: 如果是 Polygon (多边形)，坐标在 exterior (外环) 里
-                    # 注意：fastkml/pygeoif 的 Polygon 对象没有直接的 .coords
-                    if hasattr(geom, 'exterior') and geom.exterior is not None:
-                        coords = list(geom.exterior.coords)
-                    
-                    # 情况 2: 如果是 LineString (线) 或 Point (点)，直接有 .coords
-                    elif hasattr(geom, 'coords'):
-                        coords = list(geom.coords)
-                    
-                    # 其他情况无法处理则跳过
-                    else:
-                        continue
-
-                except Exception as ex:
-                    print(f"警告: 跳过一个无法解析几何类型的要素 - {ex}")
-                    continue
-
-                if not coords:
-                    continue
-                
-                # --- 转换为 Shapely 对象 ---
-                # 提取 (x, y)，忽略 z
-                xy_coords = [(c[0], c[1]) for c in coords]
-                
-                # 只有 >= 3 个点才能构成面
-                if len(xy_coords) >= 3:
-                    geoms.append(Polygon(xy_coords))
+    try:
+        # 更新全局变量
+        if dem_path: 原始DEM = dem_path
+        if boundary_kml: 边界kml_path = boundary_kml
+        if profile_kml: 剖面线kml = profile_kml
         
-        return geoms
+        # 定义坐标系和创建转换器
+        wgs84 = "EPSG:4326"  # WGS84
+        cgcs2000 = "EPSG:4544"  # CGCS2000
+        transformer = Transformer.from_crs(wgs84, cgcs2000, always_xy=True)
 
-    shapely_polys = extract_geometries(list(k.features()))
+        # 读取 KML 并处理
+        try:
+            # 2. 使用 fastkml 读取
+            k = kml.KML()
+            with open(边界kml_path, 'rb') as f:
+                k.from_string(f.read())
 
-    if not shapely_polys:
-        raise ValueError("未在 KML 中提取到有效的多边形几何体")
+            # 3. 递归提取几何体并转换为 Shapely 对象
+            def extract_geometries(features):
+                geoms = []
+                for feature in features:
+                    # A. 如果是文件夹，递归提取
+                    if isinstance(feature, (kml.Folder, kml.Document)):
+                        geoms.extend(extract_geometries(feature.features()))
+                    
+                    # B. 如果是具体的要素 (Placemark)
+                    elif hasattr(feature, 'geometry') and feature.geometry is not None:
+                        geom = feature.geometry
+                        coords = []
 
-    # 4. 创建 GeoDataFrame (指定原始坐标系 WGS84)
-    gdf = gpd.GeoDataFrame(geometry=shapely_polys, crs="EPSG:4326")
+                        # --- 核心修复：根据几何类型获取坐标 ---
+                        try:
+                            # 情况 1: 如果是 Polygon (多边形)，坐标在 exterior (外环) 里
+                            # 注意：fastkml/pygeoif 的 Polygon 对象没有直接的 .coords
+                            if hasattr(geom, 'exterior') and geom.exterior is not None:
+                                coords = list(geom.exterior.coords)
+                            
+                            # 情况 2: 如果是 LineString (线) 或 Point (点)，直接有 .coords
+                            elif hasattr(geom, 'coords'):
+                                coords = list(geom.coords)
+                            
+                            # 其他情况无法处理则跳过
+                            else:
+                                continue
 
-    # 5. 坐标转换 (WGS84 -> CGCS2000)
-    # 您的 DEM 是 EPSG:4544
-    gdf = gdf.to_crs("EPSG:4544")
+                        except Exception as ex:
+                            print(f"警告: 跳过一个无法解析几何类型的要素 - {ex}")
+                            continue
 
-    # 6. 保存为临时 SHP
-    temp_dir = tempfile.mkdtemp()
-    temp_shp_path = os.path.join(temp_dir, "temp_boundary.shp")
-    
-    gdf.to_file(temp_shp_path, driver='ESRI Shapefile', encoding='utf-8')
-    
-    # 赋值给您的核心变量
-    面shp = temp_shp_path
-    
-    print(f"✅ KML 转换成功 (临时路径): {temp_shp_path}")
+                        if not coords:
+                            continue
+                        
+                        # --- 转换为 Shapely 对象 ---
+                        # 提取 (x, y)，忽略 z
+                        xy_coords = [(c[0], c[1]) for c in coords]
+                        
+                        # 只有 >= 3 个点才能构成面
+                        if len(xy_coords) >= 3:
+                            geoms.append(Polygon(xy_coords))
+                
+                return geoms
 
-except Exception as e:
-    print(f"❌ KML 转换失败: {e}")
-    # 抛出异常以停止后续错误
-    raise e
+            shapely_polys = extract_geometries(list(k.features()))
 
+            if not shapely_polys:
+                raise ValueError("未在 KML 中提取到有效的多边形几何体")
 
-#DEM裁剪
-import os
-import rasterio
-from rasterio.mask import mask
-import shapefile  # <--- 换用这个库，它非常稳定
-import numpy as np
+            # 4. 创建 GeoDataFrame (指定原始坐标系 WGS84)
+            gdf = gpd.GeoDataFrame(geometry=shapely_polys, crs="EPSG:4326")
+
+            # 5. 坐标转换 (WGS84 -> CGCS2000)
+            # 您的 DEM 是 EPSG:4544
+            gdf = gdf.to_crs("EPSG:4544")
+
+            # 6. 保存为临时 SHP
+            # 修改：直接保存到当前工作目录，而不是系统临时目录，方便调试
+            temp_shp_path = os.path.abspath("temp_boundary.shp")
+            
+            gdf.to_file(temp_shp_path, driver='ESRI Shapefile', encoding='utf-8')
+            
+            # 赋值给您的核心变量
+            面shp = temp_shp_path
+            
+            print(f"✅ KML 转换成功 (临时路径): {temp_shp_path}")
+
+        except Exception as e:
+            print(f"❌ KML 转换失败: {e}")
+            raise e
+
+        # 1. 执行裁剪，并把结果赋值给 outtif_裁剪
+        # 注意：这里传入的是 output_dem (插值生成的图) 和 面shp (你的GD02.shp)
+        # 此时 output_dem 还没生成，这里原来的逻辑似乎是先裁剪原始DEM，然后处理KML，插值生成DEM，再裁剪生成的DEM
+        
+        # 按照原代码逻辑顺序：
+        # Line 184: DEM = clip_raster_by_shp(原始DEM, 面shp)
+        DEM_clipped = clip_raster_by_shp(原始DEM, 面shp, custom_name="clip_original_dem")
+        if not DEM_clipped:
+             raise ValueError("原始DEM裁剪失败")
+
+        with rasterio.open(DEM_clipped) as dem:
+            transform = dem.transform
+            elevation = dem.read(1)
+            nodata = dem.nodatavals[0]
+
+        # 读取KML文件
+        kml_file = kml.KML()
+        with open(剖面线kml, 'rb') as f:
+            kml_file.from_string(f.read())
+
+        # 提取并转换KML中所有折线段的坐标，分组存储
+        line_groups = []
+        features = list(kml_file.features())
+        for feature in features:
+            for placemark in feature.features():
+                if isinstance(placemark.geometry, geometry.LineString):
+                    line_coords = []
+                    for lon, lat, *extra in placemark.geometry.coords:
+                        x, y = transformer.transform(lon, lat)
+                        ele = extra[0] if extra else 0
+                        line_coords.append((x, y, ele))
+                    line_groups.append(line_coords)
+
+        # 对每组线段坐标执行匹配检查并找到最外侧点
+        match_groups = []
+        outermost_groups = []
+        features = list(kml_file.features())
+        for feature in features:
+            for placemark in feature.features():
+                if isinstance(placemark.geometry, geometry.LineString):
+                    line_coords = []
+                    for lon, lat, *extra in placemark.geometry.coords:
+                        x, y = transformer.transform(lon, lat)
+                        col, row = ~transform * (x, y)
+                        if 0 <= row < elevation.shape[0] and 0 <= col < elevation.shape[1]:
+                            ele = elevation[int(row), int(col)]
+                            if ele != nodata:
+                                line_coords.append((x, y, ele))
+                    if line_coords:
+                        match_groups.append(line_coords)
+                        coords_array = np.array(line_coords)
+                        center = np.mean(coords_array[:, :2], axis=0)
+                        distances = np.linalg.norm(coords_array[:, :2] - center, axis=1)
+                        max_dist_idx = distances.argsort()[-2:]
+                        # 添加判断防止重复
+                        if max_dist_idx[0] == max_dist_idx[1]:
+                            second_max_idx = distances.argsort()[-3]
+                            max_dist_idx = [max_dist_idx[0], second_max_idx]
+                        outermost_groups.append(coords_array[max_dist_idx])
+
+        # 过滤每组中X1与X2之间的点
+        filtered_groups = []
+        for line_coords, outermost_points in zip(line_groups, outermost_groups):
+            if len(outermost_points) < 2:
+                filtered_groups.append(line_coords)
+                continue
+            outermost_indices = [np.argmin(np.linalg.norm(np.array(line_coords)[:, :2] - point[:2], axis=1)) for point in outermost_points]
+            min_idx, max_idx = sorted(outermost_indices)
+            filtered_group = line_coords[:min_idx] + line_coords[max_idx+1:]
+            filtered_groups.append(filtered_group)
+
+        # 可视化
+        # fig, ax = plt.subplots(subplot_kw={'projection': '3d'})
+        # for idx, (line_coords, outermost_points) in enumerate(zip(line_groups, outermost_groups)):
+        #     center1, direction1, center2, direction2, intersection_point, filtered_group = process_group(line_coords, outermost_points)
+        #     if center1 is not None and center2 is not None:
+        #         # 绘制原始点坐标
+        #         xs, ys, zs = zip(*filtered_group)
+        #         ax.scatter(xs, ys, zs, color=line_colors[idx], label=f'Group {idx+1} Points', s=20)
+                
+        #         # 绘制拟合的直线
+        #         line1_points = center1 + np.outer(np.linspace(-100, 100, 1000), direction1)
+        #         line2_points = center2 + np.outer(np.linspace(-100, 100, 1000), direction2)
+        #         ax.plot(line1_points[:, 0], line1_points[:, 1], line1_points[:, 2], color=line_colors[idx])
+        #         ax.plot(line2_points[:, 0], line2_points[:, 1], line2_points[:, 2], color=line_colors[idx])
+                
+        #         if intersection_point is not None:
+        #             ax.scatter(*intersection_point, color=point_colors[idx], s=100, label=f'Intersection {idx+1}')
+
+        # ax.set_xlabel('X')
+        # ax.set_ylabel('Y')
+        # ax.set_zlabel('Z')
+        # ax.legend()
+        # plt.show()
+
+        # 保存每组的X1, X2, X3坐标
+        coordinates_data = []
+
+        for idx, (line_coords, outermost_points) in enumerate(zip(line_groups, outermost_groups)):
+            # 使用已经定义的函数计算每组的处理结果
+            center1, direction1, center2, direction2, intersection_point, filtered_group = process_group(line_coords, outermost_points)
+            
+            # 如果存在交点，则保存结果
+            if center1 is not None and center2 is not None:
+                coordinates_data.append({
+                    "Group": idx + 1,
+                    "X1": outermost_points[0],
+                    "X2": outermost_points[1],
+                    "X3": intersection_point
+                })
+
+        # 写入CSV文件
+        with open("每组X1_X2_X3坐标点.csv", "w", newline='') as file:
+            fieldnames = ['Group', 'X1 (X, Y, Z)', 'X2 (X, Y, Z)', 'X3 (X, Y, Z)']
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+
+            writer.writeheader()
+            for data in coordinates_data:
+                x1_formatted = f"({data['X1'][0]:.5f}, {data['X1'][1]:.5f}, {data['X1'][2]:.5f})"
+                x2_formatted = f"({data['X2'][0]:.5f}, {data['X2'][1]:.5f}, {data['X2'][2]:.5f})"
+                x3_formatted = f"({data['X3'][0]:.5f}, {data['X3'][1]:.5f}, {data['X3'][2]:.5f})"
+                writer.writerow({
+                    'Group': data['Group'],
+                    'X1 (X, Y, Z)': x1_formatted,
+                    'X2 (X, Y, Z)': x2_formatted,
+                    'X3 (X, Y, Z)': x3_formatted
+                })
+
+        print("坐标数据已成功保存到 '每组X1_X2_X3坐标点.csv'")
+
+        # 读取CSV文件
+        data = pd.read_csv("每组X1_X2_X3坐标点.csv")
+
+        # 存储所有曲线的坐标和用于可视化的数据
+        all_curves_data = pd.DataFrame()
+        triangle_points = []
+        bspline_curves = []
+
+        for idx, row in data.iterrows():
+            p1 = parse_coordinates(row['X1 (X, Y, Z)'])
+            p2 = parse_coordinates(row['X2 (X, Y, Z)'])
+            p3 = parse_coordinates(row['X3 (X, Y, Z)'])
+            x1, y1, z1 = p1
+            x2, y2, z2 = p2
+            x3, y3, z3 = p3
+            x0, y0, z0 = calculate_incenter(x1, y1, z1, x2, y2, z2, x3, y3, z3)
+            x = [x1, x0, x2]
+            y = [y1, y0, y2]
+            z = [z1, z0, z2]
+            x_new, y_new, z_new = calculate_bspline_curve(x, y, z)
+            curve_data = pd.DataFrame({'X': x_new, 'Y': y_new, 'Z': z_new})
+            all_curves_data = pd.concat([all_curves_data, curve_data], ignore_index=True)
+            triangle_points.append((x, y, z))
+            bspline_curves.append((x_new, y_new, z_new))
+
+        # 保存为CSV文件
+        all_curves_data.to_csv("B样条点坐标.csv", index=False)
+
+        # 1. 读取 KML (边界)
+        boundary_kml_obj = kml.KML()
+        try:
+            with open(边界kml_path, 'rb') as f:
+                boundary_kml_obj.from_string(f.read())
+            print(f"成功读取 KML 文件: {边界kml_path}")
+        except Exception as e:
+            print(f"读取 KML 文件失败: {e}")
+            raise e
+
+        # 3. 定义提取坐标的列表
+        global boundary_coordinates 
+        boundary_coordinates = [] # Reset global
+
+        # 4. 执行提取
+        extract_kml_coords(list(boundary_kml_obj.features()), transformer)
+
+        # 5. 保存为 CSV
+        if boundary_coordinates:
+            coordinates_df = pd.DataFrame(boundary_coordinates, columns=['X', 'Y', 'Z'])
+            coordinates_df.to_csv("DEM边界点坐标.csv", index=False)
+            print(f"已提取 {len(boundary_coordinates)} 个坐标点，并保存至 'DEM边界点坐标.csv'")
+        else:
+            print("警告：未在 KML 文件中提取到任何坐标信息，请检查文件内容。")
+
+        # 读取两个 CSV 文件
+        if os.path.exists("B样条点坐标.csv") and os.path.exists("DEM边界点坐标.csv"):
+            bspline_points_df = pd.read_csv("B样条点坐标.csv")
+            dem_boundary_points_df = pd.read_csv("DEM边界点坐标.csv")
+
+            # 按行合并（叠加坐标点）
+            merged_df = pd.concat([bspline_points_df, dem_boundary_points_df], ignore_index=True)
+
+            # 保存合并后的数据
+            merged_df.to_csv("拟合点坐标.csv", index=False)
+            print("两个 CSV 文件已合并并保存为 '拟合点坐标.csv'")
+        else:
+            raise FileNotFoundError("B样条点坐标.csv 或 DEM边界点坐标.csv 未生成")
+
+        # 读取CSV文件（包含 X, Y, Z 坐标）
+        df = pd.read_csv("拟合点坐标.csv")
+        X = df['X'].values
+        Y = df['Y'].values
+        Z = df['Z'].values
+
+        # 使用二维插值
+        grid_x, grid_y = np.meshgrid(np.linspace(min(X), max(X), 100), 
+                                     np.linspace(min(Y), max(Y), 100))
+
+        # 使用 'griddata' 进行插值
+        grid_z = interpolate.griddata((X, Y), Z, (grid_x, grid_y), method='linear')
+
+        # 将插值结果保存为 DEM（GeoTIFF 格式）
+        grid_z_flipped = np.flip(grid_z, axis=0)  # 反转 Z 数据以匹配反转的 Y 坐标
+
+        transform = from_origin(np.min(grid_x), np.max(grid_y), 
+                                (np.max(grid_x) - np.min(grid_x)) / 100,  # X 轴的分辨率
+                                (np.max(grid_y) - np.min(grid_y)) / 100)  # Y 轴的分辨率
+
+        # 保存为 GeoTIFF
+        with rasterio.open(output_dem, 'w', driver='GTiff', 
+                           height=grid_z_flipped.shape[0], width=grid_z_flipped.shape[1], 
+                           count=1, dtype=grid_z_flipped.dtype, crs=CRS.from_epsg(4544),
+                           transform=transform) as dst:
+            dst.write(grid_z_flipped, 1)
+
+        print(f"DEM 已保存为 {output_dem}")
+
+        # 1. 执行裁剪
+        # 注意：这里传入的是 output_dem (插值生成的图) 和 面shp (你的GD02.shp)
+        outtif_裁剪 = clip_raster_by_shp(output_dem, 面shp, custom_name="final_clip_test")
+        
+        # 主逻辑继续...
+        main_volume_calc()
+
+    finally:
+        # 恢复工作目录
+        if work_dir:
+            os.chdir(original_cwd)
 
 def clip_raster_by_shp(raster_path, shp_path, custom_name="clip_original"):
     print(f"--- 开始执行裁剪 ---")
@@ -153,6 +416,8 @@ def clip_raster_by_shp(raster_path, shp_path, custom_name="clip_original"):
             # 这里简化逻辑，直接用 custom_name 防止字段读取出错
             filename = f"{custom_name}.tif"
             final_output_path = os.path.join(os.path.dirname(raster_path), filename)
+            # 确保绝对路径
+            final_output_path = os.path.abspath(final_output_path)
 
             # 更新元数据
             out_meta = src.meta.copy()
@@ -176,72 +441,6 @@ def clip_raster_by_shp(raster_path, shp_path, custom_name="clip_original"):
 
     # 【核心修复】：必须把路径 return 出去，否则外面接收到的是 None
     return final_output_path
-
-# -------------------------- 执行逻辑 --------------------------
-
-# 1. 执行裁剪，并把结果赋值给 outtif_裁剪
-# 注意：这里传入的是 output_dem (插值生成的图) 和 面shp (你的GD02.shp)
-DEM = clip_raster_by_shp(原始DEM, 面shp)
-with rasterio.open(DEM) as dem:
-    transform = dem.transform
-    elevation = dem.read(1)
-    nodata = dem.nodatavals[0]
-
-# 读取KML文件
-kml_file = kml.KML()
-with open(剖面线kml, 'rb') as f:
-    kml_file.from_string(f.read())
-
-# 提取并转换KML中所有折线段的坐标，分组存储
-line_groups = []
-features = list(kml_file.features())
-for feature in features:
-    for placemark in feature.features():
-        if isinstance(placemark.geometry, geometry.LineString):
-            line_coords = []
-            for lon, lat, *extra in placemark.geometry.coords:
-                x, y = transformer.transform(lon, lat)
-                ele = extra[0] if extra else 0
-                line_coords.append((x, y, ele))
-            line_groups.append(line_coords)
-
-# 对每组线段坐标执行匹配检查并找到最外侧点
-match_groups = []
-outermost_groups = []
-features = list(kml_file.features())
-for feature in features:
-    for placemark in feature.features():
-        if isinstance(placemark.geometry, geometry.LineString):
-            line_coords = []
-            for lon, lat, *extra in placemark.geometry.coords:
-                x, y = transformer.transform(lon, lat)
-                col, row = ~transform * (x, y)
-                if 0 <= row < elevation.shape[0] and 0 <= col < elevation.shape[1]:
-                    ele = elevation[int(row), int(col)]
-                    if ele != nodata:
-                        line_coords.append((x, y, ele))
-            if line_coords:
-                match_groups.append(line_coords)
-                coords_array = np.array(line_coords)
-                center = np.mean(coords_array[:, :2], axis=0)
-                distances = np.linalg.norm(coords_array[:, :2] - center, axis=1)
-                max_dist_idx = distances.argsort()[-2:]
-                # 添加判断防止重复
-                if max_dist_idx[0] == max_dist_idx[1]:
-                    second_max_idx = distances.argsort()[-3]
-                    max_dist_idx = [max_dist_idx[0], second_max_idx]
-                outermost_groups.append(coords_array[max_dist_idx])
-
-# 过滤每组中X1与X2之间的点
-filtered_groups = []
-for line_coords, outermost_points in zip(line_groups, outermost_groups):
-    if len(outermost_points) < 2:
-        filtered_groups.append(line_coords)
-        continue
-    outermost_indices = [np.argmin(np.linalg.norm(np.array(line_coords)[:, :2] - point[:2], axis=1)) for point in outermost_points]
-    min_idx, max_idx = sorted(outermost_indices)
-    filtered_group = line_coords[:min_idx] + line_coords[max_idx+1:]
-    filtered_groups.append(filtered_group)
 
 def fit_line_3d(points):
     points = np.asarray(points)
@@ -277,89 +476,20 @@ def line_intersection(center1, direction1, center2, direction2):
     point_on_line2 = center2 + t[1] * direction2
     return (point_on_line1 + point_on_line2) / 2, np.linalg.norm(point_on_line1 - point_on_line2)
 
-# 配置颜色
-line_colors = plt.cm.viridis(np.linspace(0, 1, len(line_groups)))
-point_colors = plt.cm.spring(np.linspace(0, 1, len(line_groups)))
-
-# 可视化
-fig, ax = plt.subplots(subplot_kw={'projection': '3d'})
-for idx, (line_coords, outermost_points) in enumerate(zip(line_groups, outermost_groups)):
-    center1, direction1, center2, direction2, intersection_point, filtered_group = process_group(line_coords, outermost_points)
-    if center1 is not None and center2 is not None:
-        # 绘制原始点坐标
-        xs, ys, zs = zip(*filtered_group)
-        ax.scatter(xs, ys, zs, color=line_colors[idx], label=f'Group {idx+1} Points', s=20)
-        
-        # 绘制拟合的直线
-        line1_points = center1 + np.outer(np.linspace(-100, 100, 1000), direction1)
-        line2_points = center2 + np.outer(np.linspace(-100, 100, 1000), direction2)
-        ax.plot(line1_points[:, 0], line1_points[:, 1], line1_points[:, 2], color=line_colors[idx])
-        ax.plot(line2_points[:, 0], line2_points[:, 1], line2_points[:, 2], color=line_colors[idx])
-        
-        if intersection_point is not None:
-            ax.scatter(*intersection_point, color=point_colors[idx], s=100, label=f'Intersection {idx+1}')
-
-ax.set_xlabel('X')
-ax.set_ylabel('Y')
-ax.set_zlabel('Z')
-ax.legend()
-plt.show()
-
 import csv
 
-# 保存每组的X1, X2, X3坐标
-coordinates_data = []
-
-for idx, (line_coords, outermost_points) in enumerate(zip(line_groups, outermost_groups)):
-    # 使用已经定义的函数计算每组的处理结果
-    center1, direction1, center2, direction2, intersection_point, filtered_group = process_group(line_coords, outermost_points)
-    
-    # 如果存在交点，则保存结果
-    if center1 is not None and center2 is not None:
-        coordinates_data.append({
-            "Group": idx + 1,
-            "X1": outermost_points[0],
-            "X2": outermost_points[1],
-            "X3": intersection_point
-        })
-
-# 写入CSV文件
-with open("每组X1_X2_X3坐标点.csv", "w", newline='') as file:
-    fieldnames = ['Group', 'X1 (X, Y, Z)', 'X2 (X, Y, Z)', 'X3 (X, Y, Z)']
-    writer = csv.DictWriter(file, fieldnames=fieldnames)
-
-    writer.writeheader()
-    for data in coordinates_data:
-        x1_formatted = f"({data['X1'][0]:.5f}, {data['X1'][1]:.5f}, {data['X1'][2]:.5f})"
-        x2_formatted = f"({data['X2'][0]:.5f}, {data['X2'][1]:.5f}, {data['X2'][2]:.5f})"
-        x3_formatted = f"({data['X3'][0]:.5f}, {data['X3'][1]:.5f}, {data['X3'][2]:.5f})"
-        writer.writerow({
-            'Group': data['Group'],
-            'X1 (X, Y, Z)': x1_formatted,
-            'X2 (X, Y, Z)': x2_formatted,
-            'X3 (X, Y, Z)': x3_formatted
-        })
-
-print("坐标数据已成功保存到 '每组X1_X2_X3坐标点.csv'")
-
-# 读取CSV文件
-data = pd.read_csv("每组X1_X2_X3坐标点.csv")
-
-# 定义函数，用于从字符串解析坐标 (x, y, z)
 def parse_coordinates(coord_str):
     match = re.match(r'\(([-\d.]+),\s*([-\d.]+),\s*([-\d.]+)\)', coord_str)
     if match:
         return float(match.group(1)), float(match.group(2)), float(match.group(3))
     raise ValueError(f"无法解析坐标: {coord_str}")
 
-# 计算三角形的内心
 def calculate_incenter(x1, y1, z1, x2, y2, z2, x3, y3, z3):
     a = np.linalg.norm([x2 - x3, y2 - y3, z2 - z3])
     b = np.linalg.norm([x3 - x1, y3 - y1, z3 - z1])
     c = np.linalg.norm([x1 - x2, y1 - y2, z1 - z2])
     return (a * x1 + b * x2 + c * x3) / (a + b + c), (a * y1 + b * y2 + c * y3) / (a + b + c), (a * z1 + b * z2 + c * z3) / (a + b + c)
 
-# 计算 B-spline 曲线
 def calculate_bspline_curve(x, y, z):
     tck_x = interpolate.splrep([0, 1, 2], x, k=2)
     tck_y = interpolate.splrep([0, 1, 2], y, k=2)
@@ -367,64 +497,13 @@ def calculate_bspline_curve(x, y, z):
     u_new = np.linspace(0, 2, 100)
     return interpolate.splev(u_new, tck_x), interpolate.splev(u_new, tck_y), interpolate.splev(u_new, tck_z)
 
-# 存储所有曲线的坐标和用于可视化的数据
-all_curves_data = pd.DataFrame()
-triangle_points = []
-bspline_curves = []
-
-for idx, row in data.iterrows():
-    p1 = parse_coordinates(row['X1 (X, Y, Z)'])
-    p2 = parse_coordinates(row['X2 (X, Y, Z)'])
-    p3 = parse_coordinates(row['X3 (X, Y, Z)'])
-    x1, y1, z1 = p1
-    x2, y2, z2 = p2
-    x3, y3, z3 = p3
-    x0, y0, z0 = calculate_incenter(x1, y1, z1, x2, y2, z2, x3, y3, z3)
-    x = [x1, x0, x2]
-    y = [y1, y0, y2]
-    z = [z1, z0, z2]
-    x_new, y_new, z_new = calculate_bspline_curve(x, y, z)
-    curve_data = pd.DataFrame({'X': x_new, 'Y': y_new, 'Z': z_new})
-    all_curves_data = pd.concat([all_curves_data, curve_data], ignore_index=True)
-    triangle_points.append((x, y, z))
-    bspline_curves.append((x_new, y_new, z_new))
-
-# 保存为CSV文件
-all_curves_data.to_csv("B样条点坐标.csv", index=False)
-
-# 可视化
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-colors = plt.cm.viridis(np.linspace(0, 1, len(data)))
-
-for (x, y, z), (x_new, y_new, z_new), color in zip(triangle_points, bspline_curves, colors):
-    ax.scatter(x, y, z, color=color, s=50)
-    ax.plot(x_new, y_new, z_new, color=color)
-
-ax.set_xlabel('X Coordinate')
-ax.set_ylabel('Y Coordinate')
-ax.set_zlabel('Z Coordinate')
-plt.show()
-
-# 1. 读取 KML
-boundary_kml = kml.KML()
-try:
-    with open(边界kml_path, 'rb') as f:
-        boundary_kml.from_string(f.read())
-    print(f"成功读取 KML 文件: {边界kml_path}")
-except Exception as e:
-    print(f"读取 KML 文件失败: {e}")
-    exit() # 或者做其他错误处理
-
-# 3. 定义提取坐标的列表
-boundary_coordinates = []
-
 # 定义递归函数以处理 KML 可能存在的文件夹嵌套结构 (Folder/Document)
-def extract_kml_coords(features_list):
+def extract_kml_coords(features_list, transformer):
+    global boundary_coordinates
     for feature in features_list:
         # 如果是文件夹或文档，递归进入
         if isinstance(feature, (kml.Folder, kml.Document)):
-            extract_kml_coords(feature.features())
+            extract_kml_coords(feature.features(), transformer)
         # 如果是包含几何信息的要素 (Placemark)
         elif hasattr(feature, 'geometry') and feature.geometry is not None:
             geom = feature.geometry
@@ -452,189 +531,6 @@ def extract_kml_coords(features_list):
                 
                 boundary_coordinates.append((x, y, ele))
 
-# 4. 执行提取
-extract_kml_coords(list(boundary_kml.features()))
-
-# 5. 保存为 CSV
-if boundary_coordinates:
-    coordinates_df = pd.DataFrame(boundary_coordinates, columns=['X', 'Y', 'Z'])
-    coordinates_df.to_csv("DEM边界点坐标.csv", index=False)
-    print(f"已提取 {len(boundary_coordinates)} 个坐标点，并保存至 'DEM边界点坐标.csv'")
-else:
-    print("警告：未在 KML 文件中提取到任何坐标信息，请检查文件内容。")
-
-# 读取两个 CSV 文件
-bspline_points_df = pd.read_csv("B样条点坐标.csv")
-dem_boundary_points_df = pd.read_csv("DEM边界点坐标.csv")
-
-# 按行合并（叠加坐标点）
-merged_df = pd.concat([bspline_points_df, dem_boundary_points_df], ignore_index=True)
-
-# 保存合并后的数据
-merged_df.to_csv("拟合点坐标.csv", index=False)
-print("两个 CSV 文件已合并并保存为 '拟合点坐标.csv'")
-
-import numpy as np
-import pandas as pd
-from scipy import interpolate
-import rasterio
-from rasterio.transform import from_origin
-from rasterio.crs import CRS
-import matplotlib.pyplot as plt
-
-# 读取CSV文件（包含 X, Y, Z 坐标）
-df = pd.read_csv("拟合点坐标.csv")  # 替换为你的CSV文件路径
-X = df['X'].values
-Y = df['Y'].values
-Z = df['Z'].values
-
-# 使用二维插值（例如：基于线性插值或样条插值）
-# 创建一个网格，用于插值生成更多的点
-grid_x, grid_y = np.meshgrid(np.linspace(min(X), max(X), 100), 
-                             np.linspace(min(Y), max(Y), 100))
-
-# 使用 'griddata' 进行插值
-# method 可以选择 ['linear', 'nearest', 'cubic']（线性插值、最邻近插值、样条插值）
-grid_z = interpolate.griddata((X, Y), Z, (grid_x, grid_y), method='linear')
-
-# 可视化插值结果
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-#ax.scatter(X, Y, Z, color='red', label='原始数据')
-ax.plot_surface(grid_x, grid_y, grid_z, cmap='jet', alpha=0.7)
-ax.set_xlabel('X')
-ax.set_ylabel('Y')
-ax.set_zlabel('Z')
-ax.set_title('插值生成 DEM')
-ax.legend()
-plt.show()
-
-# 将插值结果保存为 DEM（GeoTIFF 格式）
-# 直接反转 Y 坐标：让 Y 坐标从大到小，以适应 DEM 格式
-grid_z_flipped = np.flip(grid_z, axis=0)  # 反转 Z 数据以匹配反转的 Y 坐标
-
-# 创建 rasterio 的 transform 和 metadata
-# 反转 Y 轴：在 GeoTIFF 中，Y 轴通常是从上到下的，因此我们需要将 Y 值的顺序进行反转
-transform = from_origin(np.min(grid_x), np.max(grid_y), 
-                        (np.max(grid_x) - np.min(grid_x)) / 100,  # X 轴的分辨率
-                        (np.max(grid_y) - np.min(grid_y)) / 100)  # Y 轴的分辨率
-
-# 保存为 GeoTIFF
-output_dem = 'output_dem.tif'  # 保存路径
-
-with rasterio.open(output_dem, 'w', driver='GTiff', 
-                   height=grid_z_flipped.shape[0], width=grid_z_flipped.shape[1], 
-                   count=1, dtype=grid_z_flipped.dtype, crs=CRS.from_epsg(4544),  # 使用EPSG:4544坐标系
-                   transform=transform) as dst:
-    dst.write(grid_z_flipped, 1)
-
-print(f"DEM 已保存为 {output_dem}")
-
-import os
-import rasterio
-from rasterio.mask import mask
-import shapefile  # <--- 换用这个库，它非常稳定
-import numpy as np
-
-# ================= 配置路径 =================
-# 1. 你的面 SHP 文件路径
-shp_path = 面shp
-
-# 2. 你的 TIF 文件路径
-tif_path = DEM 
-# 如果上面那个不存在，先用原始DEM测一下：
-# tif_path = r"F:\名人堂\许英杰项目\泥石流物源体积计算\九寨沟数据\剖面线2数据测试\c2020年核心区DEM5m_Clip1_Clip21.tif"
-
-# 3. 输出路径
-output_path = "final_clip_test.tif"
-# ===========================================
-
-def clip_raster_by_shp(raster_path, shp_path, custom_name="clip_interpolated"):
-    print(f"--- 开始执行裁剪 ---")
-    print(f"输入 DEM: {raster_path}")
-    print(f"裁剪边界: {shp_path}")
-    
-    final_output_path = None
-
-    # 1. 读取 SHP 几何体 (Safe Mode)
-    try:
-        sf = shapefile.Reader(shp_path)
-        geoms = []
-        for shape_rec in sf.shapeRecords():
-            geoms.append(shape_rec.shape.__geo_interface__)
-        print(f"✅ SHP 读取成功，包含 {len(geoms)} 个几何要素")
-    except Exception as e:
-        print(f"❌ SHP 读取失败: {e}")
-        return None
-
-    # 2. 执行裁剪
-    try:
-        with rasterio.open(raster_path) as src:
-            # 尝试 mask 裁剪
-            try:
-                out_image, out_transform = mask(src, geoms, crop=True, nodata=0)
-            except ValueError:
-                print("❌ 裁剪失败：SHP 与 DEM 无重叠区域！")
-                return None
-
-            # 检查是否为空
-            if np.all(out_image == 0):
-                print("⚠️ 警告：裁剪结果全为 0")
-
-            # 构建输出文件名
-            # 这里简化逻辑，直接用 custom_name 防止字段读取出错
-            filename = f"{custom_name}.tif"
-            final_output_path = os.path.join(os.path.dirname(raster_path), filename)
-
-            # 更新元数据
-            out_meta = src.meta.copy()
-            out_meta.update({
-                "driver": "GTiff",
-                "height": out_image.shape[1],
-                "width": out_image.shape[2],
-                "transform": out_transform,
-                "nodata": 0
-            })
-
-            # 写入文件
-            with rasterio.open(final_output_path, "w", **out_meta) as dest:
-                dest.write(out_image)
-            
-            print(f"✅ 裁剪文件已生成: {final_output_path}")
-
-    except Exception as e:
-        print(f"❌ 裁剪过程出错: {e}")
-        return None
-
-    # 【核心修复】：必须把路径 return 出去，否则外面接收到的是 None
-    return final_output_path
-
-# -------------------------- 执行逻辑 --------------------------
-
-# 1. 执行裁剪，并把结果赋值给 outtif_裁剪
-# 注意：这里传入的是 output_dem (插值生成的图) 和 面shp (你的GD02.shp)
-outtif_裁剪 = clip_raster_by_shp(output_dem, 面shp)
-
-import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from osgeo import gdal, gdalconst
-
-# -------------------------- 配置参数 --------------------------
-# 输出的临时对齐文件（原始DEM对齐后的结果）
-outputfilePath = 'Aligned_Reference_DEM.tif'
-# 新增：为了保证行列数一致，输入文件也需要对齐分辨率，生成一个临时文件
-input_aligned_path = 'Aligned_Input_Resampled.tif' 
-
-# 输入文件：即上一步生成的裁剪后的TIF (小范围)
-# inputfilePath = outtif_裁剪 # (保持你的变量名)
-inputfilePath = outtif_裁剪 # 测试用，请保留你原来的变量
-
-# 参考文件：即原始的大范围 DEM
-# referencefilefilePath = DEM # (保持你的变量名)
-referencefilefilePath = DEM # 测试用，请保留你原来的变量
-# -------------------------------------------------------------
-
 def Reproject_Reference_To_Input():
     """
     【修改后】：
@@ -642,7 +538,19 @@ def Reproject_Reference_To_Input():
     2. 获取 referencefilefilePath 的【分辨率】(Resolution)。
     3. 将两者都重投影到这个新的统一网格上，确保行列数完全一致。
     """
+    # 动态使用全局变量
+    global inputfilePath, referencefilefilePath
+    # 如果是 run_algorithm 调用，这里的全局变量可能需要更新
+    # 在 run_algorithm 中：outtif_裁剪 被赋值给 inputfilePath
+    # 原始DEM 被赋值给 referencefilefilePath
+    
+    # 重新绑定，以防万一
+    inputfilePath = outtif_裁剪
+    referencefilefilePath = 原始DEM
+
     print(f"正在执行对齐：范围跟随裁剪图，分辨率跟随原始图...")
+    print(f"输入: {inputfilePath}")
+    print(f"参考: {referencefilefilePath}")
     
     # 1. 打开“裁剪图”获取范围 (Bounds)
     in_ds = gdal.Open(inputfilePath, gdal.GA_ReadOnly)
@@ -861,4 +769,22 @@ def main_volume_calc():
         traceback.print_exc()
 
 if __name__ == "__main__":
-    main_volume_calc()
+    # 如果直接运行，使用默认硬编码路径执行
+    # 为了兼容原来的逻辑，这里需要重新设置一下全局变量的依赖关系
+    # 因为原来的脚本是过程式的，很多变量是在全局作用域被计算出来的
+    # 现在封装后，我们需要在 main 中模拟这个过程
+    
+    print("Executing in legacy mode...")
+    
+    # 1. 裁剪原始DEM
+    DEM_clipped = clip_raster_by_shp(原始DEM, 面shp, custom_name="clip_original_dem") # 注意：这里面shp在原脚本是Line 103生成的
+    # ... 但原脚本的顺序是：
+    # 1. KML -> 面shp
+    # 2. clip(原始DEM, 面shp) -> DEM (Line 184)
+    # 3. KML处理 -> 插值 -> output_dem
+    # 4. clip(output_dem, 面shp) -> outtif_裁剪
+    # 5. 对齐 -> 计算
+    
+    # 由于重构比较复杂，建议直接调用封装好的 run_algorithm
+    # 但需要传入 None 让其使用默认的硬编码路径
+    run_algorithm()
