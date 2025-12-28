@@ -303,7 +303,7 @@ def compute_volume_difference():
     valid_volume_diff = valid_elevation_diff * area_per_pixel  # 体积，单位：立方米
 
     # 计算总的体积差
-    total_volume_diff = np.sum(valid_volume_diff)  # 忽略无效值（NaN 和 Inf）进行求和
+    total_volume_diff = abs(np.sum(valid_volume_diff))  # 忽略无效值（NaN 和 Inf）进行求和
     print(f"计算得到的体积差：{total_volume_diff} 立方米")
 
     return valid_mask, elevation_diff, output_data
