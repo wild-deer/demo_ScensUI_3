@@ -288,23 +288,36 @@ const onActionClick = async () => {
         visualization_urls: processedVisUrls
     }
 
-    // Determine what to preview
-    if (processedVisUrls.length > 0) {
-        previewUrl.value = processedVisUrls[0]
-    } else if (processedFiles.generated_dem) {
-        // Try to fetch and render the generated DEM TIFF
+    // Determine what to preview: Prioritize DEM TIFF over static visualization
+    let demUrl = processedFiles.generated_dem;
+    // Fallback to clipped dem if generated_dem is not available
+    if (!demUrl && processedFiles.final_clipped_dem) {
+        demUrl = processedFiles.final_clipped_dem;
+    }
+
+    if (demUrl) {
+         // Try to fetch and render the DEM TIFF
         try {
-            const tiffResp = await fetch(processedFiles.generated_dem)
+            const tiffResp = await fetch(demUrl)
             if (tiffResp.ok) {
                 const blob = await tiffResp.blob()
                 const dataUrl = await renderTiffToDataUrl(blob)
                 if (dataUrl) {
                     previewUrl.value = dataUrl
+                } else {
+                     // If TIFF render fails, fallback to vis urls if any
+                    if (processedVisUrls.length > 0) previewUrl.value = processedVisUrls[0]
                 }
+            } else {
+                 // If fetch fails, fallback
+                 if (processedVisUrls.length > 0) previewUrl.value = processedVisUrls[0]
             }
         } catch (e) {
             console.warn('Failed to render DEM preview:', e)
+            if (processedVisUrls.length > 0) previewUrl.value = processedVisUrls[0]
         }
+    } else if (processedVisUrls.length > 0) {
+        previewUrl.value = processedVisUrls[0]
     }
 
     status.value = 'done'
