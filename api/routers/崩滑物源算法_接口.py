@@ -42,7 +42,7 @@ async def process_slbl(file: UploadFile = File(...), max_iter: int = Form(...), 
     with rasterio.open(str(reproj_path)) as src:
         transform = src.transform
         pixel_area = abs(transform.a * transform.e)
-    total_volume_diff = float(np.nansum(elevation_diff[valid_mask] * pixel_area))
+    total_volume_diff = abs(float(np.nansum(elevation_diff[valid_mask] * pixel_area)))
     base = str(request.base_url).rstrip("/")
     return {
         "id": uid,
