@@ -37,7 +37,14 @@
             />
           </div>
         </div>
-
+        <div class="pt-4">
+          <button
+            type="button"
+            class="w-full py-2 rounded-md bg-blue-600 text-white hover:bg-indigo-700 active:scale-[.99] transition"
+          >
+            预估最大深度
+          </button>
+        </div>
         <div class="mt-6 pt-10">
           <div class="mb-3 text-lg font-bold text-slate-700 py-4">输出文件</div>
           <div v-if="status === 'done'" class="mt-4 space-y-2">
@@ -278,5 +285,4 @@ const createPreview = (value) => {
   return c.toDataURL('image/png')
 }
 </script>
-
 
