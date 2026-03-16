@@ -87,12 +87,12 @@
               <div class="text-xs text-gray-500 mb-1">包含分类 .tif 的压缩包</div>
               <input type="file" accept=".zip" class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700 pb-2" @change="onPCategoryChange" />
               <!-- 在这里请加入训练样本选择按钮 -->
-              <button
-                type="button"
-                class="mt-3 w-full py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 active:scale-[.99] transition font-semibold"
-              >
-                选择训练样本
-              </button>
+              <label class="block text-sm mb-2 text-slate-700">训练样本 (.zip)</label>
+              <input
+                type="file"
+                accept=".zip"
+                class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700"
+              />
             </div>
             
             <div v-if="pStatus === 'prepared' || pStatus === 'applying' || pStatus === 'done'" class="bg-white p-3 rounded border border-gray-200">
@@ -116,25 +116,37 @@
             <!-- 决策树数量 -->
              <!-- 最大树深度 -->
               <!-- 每类最大样本数 -->
-            <div class="mt-4 grid grid-cols-1 gap-2 pt-2">
-              <button
-                type="button"
-                class="w-full py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 active:scale-[.99] transition font-semibold"
-              >
-                决策树数量
-              </button>
-              <button
-                type="button"
-                class="w-full py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 active:scale-[.99] transition font-semibold"
-              >
-                最大树深度
-              </button>
-              <button
-                type="button"
-                class="w-full py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 active:scale-[.99] transition font-semibold"
-              >
-                每类最大样本数
-              </button>
+            <div class="mt-4 space-y-3 p-2">
+              <div>
+                <label class="block text-sm mb-2 text-slate-700">决策树数量</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="例如：100"
+                  class="w-full px-3 py-2 rounded-md bg-gray-100 border border-gray-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label class="block text-sm mb-2 text-slate-700">最大树深度</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="例如：10"
+                  class="w-full px-3 py-2 rounded-md bg-gray-100 border border-gray-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label class="block text-sm mb-2 text-slate-700">每类最大样本数</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="例如：500"
+                  class="w-full px-3 py-2 rounded-md bg-gray-100 border border-gray-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
           </div>
 

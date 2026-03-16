@@ -38,12 +38,14 @@
           </div>
         </div>
         <div class="pt-4">
-          <button
-            type="button"
-            class="w-full py-2 rounded-md bg-blue-600 text-white hover:bg-indigo-700 active:scale-[.99] transition"
-          >
-            预估最大深度
-          </button>
+          <label class="block text-sm mb-2 text-slate-700">预估最大深度</label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="例如：2.5"
+            class="w-full px-3 py-2 rounded-md bg-gray-100 border border-gray-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
         </div>
         <div class="mt-6 pt-10">
           <div class="mb-3 text-lg font-bold text-slate-700 py-4">输出文件</div>
@@ -285,4 +287,3 @@ const createPreview = (value) => {
   return c.toDataURL('image/png')
 }
 </script>
-
